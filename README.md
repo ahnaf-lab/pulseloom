@@ -15,8 +15,13 @@ turns each reading into a `Metrics` vector, so the generator can be driven by
 whatever the machine is actually doing. CPU and memory map onto psutil's own
 percentages; disk activity has no OS-native percentage, so it is derived from
 the read+write byte delta between two samples, normalized against an assumed
-saturation throughput. The daemon that runs this sampler on a loop and writes
-frames to disk continuously is a later milestone.
+saturation throughput.
+
+The `pulseloom` command wraps all of this into a small background daemon:
+on a fixed interval it samples the machine, generates a frame and writes it
+to disk, atomically, so whatever is reading the file never sees a half
+written SVG. `start`/`stop`/`status` manage the daemon process through a pid
+file, the same pattern most Unix daemons use.
 
 ## Install
 
@@ -34,6 +39,26 @@ is for, and reimplementing that per-platform by hand would be unreasonable.
 Everything else uses only the standard library.
 
 ## Usage
+
+Run the daemon: it samples the machine, generates a frame and writes it to
+disk once per interval, forever, until stopped.
+
+```bash
+pulseloom start                      # forks into the background
+pulseloom start --foreground         # or stays attached to this terminal
+pulseloom status                     # "pulseloom is running (pid 1234)"
+pulseloom stop                       # sends SIGTERM and waits for it to exit
+```
+
+By default frames are written to `~/.pulseloom/frame.svg` and the pid file
+lives at `~/.pulseloom/pulseloom.pid`; both are configurable:
+
+```bash
+pulseloom start --output ~/wallpaper.svg --interval 2 --seed 1 \
+  --pid-file ~/.pulseloom/pulseloom.pid
+```
+
+The library is also usable directly:
 
 ```python
 from pulseloom import Metrics, generate_frame, MetricsSampler
