@@ -9,7 +9,7 @@ description = "A deterministic reaction-diffusion wallpaper generator driven by 
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-dependencies = []
+dependencies = ["psutil>=5.9,<7"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
