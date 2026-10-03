@@ -92,3 +92,55 @@ def test_run_loop_writes_nothing_when_should_continue_is_already_false(tmp_path)
     run_loop(output_file, sampler=sampler, should_continue=lambda: False)
 
     assert not output_file.exists()
+
+
+def test_run_loop_writes_plain_frame_for_the_first_sample(tmp_path, monkeypatch):
+    output_file = tmp_path / "frame.svg"
+    reading = Metrics(cpu=0.2, memory=0.3, disk=0.4)
+    sampler = _FakeSampler([reading])
+
+    import pulseloom.daemon as daemon_module
+
+    blend_calls = []
+    monkeypatch.setattr(
+        daemon_module, "generate_blended_frames", lambda *a, **k: blend_calls.append(a) or []
+    )
+
+    run_loop(
+        output_file,
+        seed=5,
+        sampler=sampler,
+        should_continue=lambda: True if not output_file.exists() else False,
+    )
+
+    assert blend_calls == []
+    assert output_file.read_text() == generate_frame(reading, seed=5)
+
+
+def test_run_loop_blends_between_consecutive_samples(tmp_path, monkeypatch):
+    output_file = tmp_path / "frame.svg"
+    readings = [
+        Metrics(cpu=0.1, memory=0.1, disk=0.1),
+        Metrics(cpu=0.9, memory=0.9, disk=0.9),
+    ]
+    sampler = _FakeSampler(readings)
+    calls = {"count": 0}
+
+    def should_continue():
+        calls["count"] += 1
+        return calls["count"] <= len(readings)
+
+    import pulseloom.daemon as daemon_module
+
+    seen = []
+
+    def fake_blend(metrics_a, metrics_b, seed, steps_per_gap):
+        seen.append((metrics_a, metrics_b, seed, steps_per_gap))
+        return ["<svg>mid</svg>", "<svg>end</svg>"]
+
+    monkeypatch.setattr(daemon_module, "generate_blended_frames", fake_blend)
+
+    run_loop(output_file, seed=3, sampler=sampler, should_continue=should_continue, blend_steps=2)
+
+    assert seen == [(readings[0], readings[1], 3, 2)]
+    assert output_file.read_text() == "<svg>end</svg>"

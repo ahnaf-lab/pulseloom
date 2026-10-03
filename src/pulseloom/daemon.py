@@ -9,7 +9,8 @@ import os
 from pathlib import Path
 from typing import Callable, Optional, Union
 
-from .generator import generate_frame
+from .generator import DEFAULT_BLEND_STEPS, generate_blended_frames, generate_frame
+from .metrics import Metrics
 from .sampler import DEFAULT_INTERVAL, MetricsSampler
 
 DEFAULT_SEED = 0
@@ -67,11 +68,17 @@ def run_loop(
     seed: int = DEFAULT_SEED,
     sampler: Optional[MetricsSampler] = None,
     should_continue: Callable[[], bool] = lambda: True,
+    blend_steps: int = DEFAULT_BLEND_STEPS,
 ) -> None:
-    """Sample, generate a frame and write it to `output_file`, on repeat.
+    """Sample, generate frames and write them to `output_file`, on repeat.
+
+    The first sample is written as-is. Every later sample is eased into from
+    the previous one: `blend_steps` interpolated frames are written in quick
+    succession, ending exactly on the new sample's own frame, so the texture
+    flows from one state to the next instead of jump-cutting on every sample.
 
     Runs until `sampler.stream()` is exhausted (never, for the real sampler)
-    or `should_continue()` returns False, whichever comes first. The frame is
+    or `should_continue()` returns False, whichever comes first. Each frame is
     written atomically: it is rendered to a temp file in the same directory
     and then moved into place, so readers never see a half-written SVG.
     """
@@ -82,9 +89,19 @@ def run_loop(
     output_file.parent.mkdir(parents=True, exist_ok=True)
     tmp_file = output_file.with_name(output_file.name + ".tmp")
 
+    previous_metrics: Optional[Metrics] = None
+
     for metrics in sampler.stream():
         if not should_continue():
             return
-        svg = generate_frame(metrics, seed=seed)
-        tmp_file.write_text(svg)
-        tmp_file.replace(output_file)
+
+        if previous_metrics is None:
+            frames = [generate_frame(metrics, seed=seed)]
+        else:
+            frames = generate_blended_frames(previous_metrics, metrics, seed, blend_steps)
+
+        for svg in frames:
+            tmp_file.write_text(svg)
+            tmp_file.replace(output_file)
+
+        previous_metrics = metrics

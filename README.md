@@ -23,6 +23,15 @@ to disk, atomically, so whatever is reading the file never sees a half
 written SVG. `start`/`stop`/`status` manage the daemon process through a pid
 file, the same pattern most Unix daemons use.
 
+Jumping straight from one sample's texture to the next tends to look like a
+jump cut, since each sample's reaction-diffusion grid is computed from
+scratch. To smooth that out, every sample after the first is eased into:
+the daemon linearly interpolates between the previous sample's grid (and
+metrics, so the color bias eases too) and the new one, writing several
+in-between frames in quick succession before settling on the new sample's
+own frame. `generate_frame_sequence` exposes the same blending as a pure
+function over a fixed list of metrics samples, which is how it's tested.
+
 ## Install
 
 Requires Python 3.9+.
@@ -55,13 +64,16 @@ lives at `~/.pulseloom/pulseloom.pid`; both are configurable:
 
 ```bash
 pulseloom start --output ~/wallpaper.svg --interval 2 --seed 1 \
-  --pid-file ~/.pulseloom/pulseloom.pid
+  --blend-steps 8 --pid-file ~/.pulseloom/pulseloom.pid
 ```
+
+`--blend-steps` controls how many eased frames are written between each pair
+of samples; higher means a smoother, more gradual transition.
 
 The library is also usable directly:
 
 ```python
-from pulseloom import Metrics, generate_frame, MetricsSampler
+from pulseloom import Metrics, generate_frame, generate_frame_sequence, MetricsSampler
 
 # Pure generation from an explicit metrics vector:
 metrics = Metrics(cpu=0.8, memory=0.3, disk=0.1)
@@ -76,6 +88,10 @@ for live_metrics in sampler.stream():
     svg = generate_frame(live_metrics, seed=42)
     # ... write svg somewhere, e.g. as the next wallpaper frame
     break  # stream() runs forever; this is just an example
+
+# Or turn a fixed sequence of samples into a smoothly blended frame sequence:
+samples = [Metrics(cpu=0.1, memory=0.2, disk=0.0), Metrics(cpu=0.8, memory=0.3, disk=0.4)]
+frames = generate_frame_sequence(samples, seed=42, steps_per_gap=8)
 ```
 
 Run the test suite:

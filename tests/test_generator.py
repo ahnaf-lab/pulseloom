@@ -1,6 +1,7 @@
 import pytest
 
 from pulseloom import Metrics, generate_frame
+from pulseloom.generator import generate_blended_frames, generate_frame_sequence
 
 
 def test_same_metrics_and_seed_are_deterministic():
@@ -42,3 +43,64 @@ def test_metrics_reject_out_of_range_values():
 def test_metrics_reject_non_numeric_values():
     with pytest.raises(TypeError):
         Metrics(cpu="high", memory=0.0, disk=0.0)
+
+
+# A fixed sequence of samples, reused across the blending tests below so the
+# whole pipeline is exercised against the same deterministic inputs.
+SAMPLE_SEQUENCE = [
+    Metrics(cpu=0.1, memory=0.2, disk=0.0),
+    Metrics(cpu=0.8, memory=0.3, disk=0.4),
+    Metrics(cpu=0.5, memory=0.9, disk=0.6),
+]
+
+
+def test_generate_blended_frames_is_deterministic():
+    a, b = SAMPLE_SEQUENCE[0], SAMPLE_SEQUENCE[1]
+    first = generate_blended_frames(a, b, seed=11, steps_per_gap=5)
+    second = generate_blended_frames(a, b, seed=11, steps_per_gap=5)
+    assert first == second
+
+
+def test_generate_blended_frames_count_and_ending():
+    a, b = SAMPLE_SEQUENCE[0], SAMPLE_SEQUENCE[1]
+    frames = generate_blended_frames(a, b, seed=11, steps_per_gap=5)
+    assert len(frames) == 5
+    assert frames[-1] == generate_frame(b, seed=11)
+
+
+def test_generate_blended_frames_ease_through_distinct_intermediate_states():
+    a, b = SAMPLE_SEQUENCE[0], SAMPLE_SEQUENCE[1]
+    frames = generate_blended_frames(a, b, seed=11, steps_per_gap=4)
+    # Every eased step should look different from the one before it, since
+    # the underlying grids and color bias are both still moving toward b.
+    assert len(set(frames)) == len(frames)
+
+
+def test_generate_frame_sequence_on_fixed_sample_sequence():
+    seed = 11
+    steps_per_gap = 4
+    frames = generate_frame_sequence(SAMPLE_SEQUENCE, seed=seed, steps_per_gap=steps_per_gap)
+
+    expected_count = 1 + (len(SAMPLE_SEQUENCE) - 1) * steps_per_gap
+    assert len(frames) == expected_count
+
+    # The sequence starts exactly on the first sample's own frame...
+    assert frames[0] == generate_frame(SAMPLE_SEQUENCE[0], seed=seed)
+    # ...and lands exactly on each later sample's own frame at the seams.
+    assert frames[steps_per_gap] == generate_frame(SAMPLE_SEQUENCE[1], seed=seed)
+    assert frames[2 * steps_per_gap] == generate_frame(SAMPLE_SEQUENCE[2], seed=seed)
+
+
+def test_generate_frame_sequence_is_deterministic():
+    first = generate_frame_sequence(SAMPLE_SEQUENCE, seed=3, steps_per_gap=3)
+    second = generate_frame_sequence(SAMPLE_SEQUENCE, seed=3, steps_per_gap=3)
+    assert first == second
+
+
+def test_generate_frame_sequence_empty_input():
+    assert generate_frame_sequence([], seed=1) == []
+
+
+def test_generate_frame_sequence_single_sample():
+    frames = generate_frame_sequence([SAMPLE_SEQUENCE[0]], seed=1)
+    assert frames == [generate_frame(SAMPLE_SEQUENCE[0], seed=1)]

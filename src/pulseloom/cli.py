@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from .daemon import (
+    DEFAULT_BLEND_STEPS,
     DEFAULT_OUTPUT_FILE,
     DEFAULT_PID_FILE,
     DEFAULT_SEED,
@@ -48,6 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"where to write the frame (default: {DEFAULT_OUTPUT_FILE})",
     )
     start.add_argument(
+        "--blend-steps", type=int, default=DEFAULT_BLEND_STEPS,
+        help=f"frames eased between consecutive samples (default: {DEFAULT_BLEND_STEPS})",
+    )
+    start.add_argument(
         "--foreground", action="store_true",
         help="run in this process instead of forking into the background",
     )
@@ -71,7 +76,7 @@ def cmd_start(args: argparse.Namespace, pid_file: Path) -> int:
     if args.foreground:
         write_pid_file(pid_file, os.getpid())
         try:
-            run_loop(output_file, interval=args.interval, seed=args.seed)
+            run_loop(output_file, interval=args.interval, seed=args.seed, blend_steps=args.blend_steps)
         finally:
             remove_pid_file(pid_file)
         return 0
@@ -89,7 +94,7 @@ def cmd_start(args: argparse.Namespace, pid_file: Path) -> int:
     # Child: detach from the parent's session and become the daemon.
     os.setsid()
     try:
-        run_loop(output_file, interval=args.interval, seed=args.seed)
+        run_loop(output_file, interval=args.interval, seed=args.seed, blend_steps=args.blend_steps)
     finally:
         remove_pid_file(pid_file)
     os._exit(0)

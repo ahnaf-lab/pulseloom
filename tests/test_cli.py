@@ -87,10 +87,11 @@ def test_cmd_start_foreground_runs_the_loop_under_a_pid_file(tmp_path, monkeypat
     output_file = tmp_path / "frame.svg"
     recorded = {}
 
-    def fake_run_loop(output, interval, seed):
+    def fake_run_loop(output, interval, seed, blend_steps):
         recorded["output"] = Path(output)
         recorded["interval"] = interval
         recorded["seed"] = seed
+        recorded["blend_steps"] = blend_steps
         recorded["pid_file_existed_during_run"] = pid_file.exists()
 
     monkeypatch.setattr(cli, "run_loop", fake_run_loop)
@@ -111,6 +112,7 @@ def test_cmd_start_foreground_runs_the_loop_under_a_pid_file(tmp_path, monkeypat
     assert recorded["output"] == output_file
     assert recorded["interval"] == 2.0
     assert recorded["seed"] == 9
+    assert recorded["blend_steps"] == cli.DEFAULT_BLEND_STEPS
     assert recorded["pid_file_existed_during_run"] is True
     assert not pid_file.exists()  # cleaned up once the loop returns
 
@@ -135,7 +137,7 @@ def test_cmd_start_replaces_a_stale_pid_file(tmp_path, monkeypatch):
     dead_proc.wait()
     write_pid_file(pid_file, dead_pid)
 
-    monkeypatch.setattr(cli, "run_loop", lambda output, interval, seed: None)
+    monkeypatch.setattr(cli, "run_loop", lambda output, interval, seed, blend_steps: None)
 
     args = cli.build_parser().parse_args(["start", "--foreground", "--pid-file", str(pid_file)])
     code = cli.cmd_start(args, pid_file)
