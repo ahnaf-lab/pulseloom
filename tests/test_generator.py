@@ -2,6 +2,7 @@ import pytest
 
 from pulseloom import Metrics, generate_frame
 from pulseloom.generator import generate_blended_frames, generate_frame_sequence
+from pulseloom.render import Palette
 
 
 def test_same_metrics_and_seed_are_deterministic():
@@ -33,6 +34,19 @@ def test_output_is_well_formed_svg_with_expected_size():
     # grid is 48 cells at 8px each
     assert 'width="384"' in svg
     assert 'height="384"' in svg
+
+
+def test_custom_palette_changes_output_but_stays_deterministic():
+    metrics = Metrics(cpu=0.7, memory=0.3, disk=0.5)
+    palette = Palette(background=(0, 0, 0), cpu_color=(10, 20, 30), memory_color=(40, 50, 60), disk_color=(70, 80, 90))
+
+    default_svg = generate_frame(metrics, seed=42)
+    custom_svg = generate_frame(metrics, seed=42, palette=palette)
+    custom_svg_again = generate_frame(metrics, seed=42, palette=palette)
+
+    assert custom_svg != default_svg
+    assert custom_svg == custom_svg_again
+    assert "#000000" in custom_svg
 
 
 def test_metrics_reject_out_of_range_values():

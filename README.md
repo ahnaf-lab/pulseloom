@@ -60,7 +60,8 @@ pulseloom stop                       # sends SIGTERM and waits for it to exit
 ```
 
 By default frames are written to `~/.pulseloom/frame.svg` and the pid file
-lives at `~/.pulseloom/pulseloom.pid`; both are configurable:
+lives at `~/.pulseloom/pulseloom.pid`; both are configurable on the command
+line:
 
 ```bash
 pulseloom start --output ~/wallpaper.svg --interval 2 --seed 1 \
@@ -69,6 +70,37 @@ pulseloom start --output ~/wallpaper.svg --interval 2 --seed 1 \
 
 `--blend-steps` controls how many eased frames are written between each pair
 of samples; higher means a smoother, more gradual transition.
+
+### Config file
+
+The same settings can live in an INI config file instead, so you don't have
+to repeat flags on every `start`. By default pulseloom reads
+`~/.pulseloom/config.ini` if it exists; point it elsewhere with `--config`.
+A CLI flag always overrides the matching config value, which in turn
+overrides the hardcoded default:
+
+```ini
+[pulseloom]
+interval = 2.0
+seed = 1
+output = ~/wallpaper.svg
+pid_file = ~/.pulseloom/pulseloom.pid
+blend_steps = 8
+
+[palette]
+background = #05060a
+cpu_color = #ff2d55
+memory_color = #34c759
+disk_color = #0a84ff
+```
+
+`[palette]` controls the colors a frame is rendered with: `cpu_color`,
+`memory_color` and `disk_color` are base colors mixed in proportion to
+reaction-diffusion intensity and brightened the busier that resource is;
+`background` fills the empty space behind them. Every color is a `#rrggbb`
+hex triplet. Leaving `[palette]` out, or any key within it, falls back to the
+default palette (pure red/green/blue on a near-black background) field by
+field.
 
 The library is also usable directly:
 
@@ -93,6 +125,27 @@ for live_metrics in sampler.stream():
 samples = [Metrics(cpu=0.1, memory=0.2, disk=0.0), Metrics(cpu=0.8, memory=0.3, disk=0.4)]
 frames = generate_frame_sequence(samples, seed=42, steps_per_gap=8)
 ```
+
+### Example frame sequence
+
+`examples/generate_sample_sequence.py` runs `generate_frame_sequence` over a
+fixed, synthetic metrics sequence (idle, then a CPU-heavy build, then a
+memory-heavy link step) and writes the resulting frames to
+`examples/output/`, so you can see what a blended sequence looks like without
+a live machine or the daemon running:
+
+```bash
+python examples/generate_sample_sequence.py
+# wrote 13 frames to .../examples/output
+```
+
+That command produces `frame-0000.svg` through `frame-0012.svg`: one frame
+for the first sample, then 6 eased frames into each of the next two samples
+(`1 + 2 * 6 = 13`). Open any of them in a browser or image viewer — `frame-0000.svg`
+is the idle frame, `frame-0006.svg` lands exactly on the CPU-heavy sample, and
+`frame-0012.svg` lands exactly on the memory-heavy one, with the frames
+between each pair easing smoothly from one texture and color bias to the
+next.
 
 Run the test suite:
 

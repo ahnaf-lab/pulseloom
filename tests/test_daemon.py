@@ -11,6 +11,7 @@ from pulseloom.daemon import (
 )
 from pulseloom.generator import generate_frame
 from pulseloom.metrics import Metrics
+from pulseloom.render import DEFAULT_PALETTE
 
 
 class _FakeSampler:
@@ -134,13 +135,13 @@ def test_run_loop_blends_between_consecutive_samples(tmp_path, monkeypatch):
 
     seen = []
 
-    def fake_blend(metrics_a, metrics_b, seed, steps_per_gap):
-        seen.append((metrics_a, metrics_b, seed, steps_per_gap))
+    def fake_blend(metrics_a, metrics_b, seed, steps_per_gap, palette):
+        seen.append((metrics_a, metrics_b, seed, steps_per_gap, palette))
         return ["<svg>mid</svg>", "<svg>end</svg>"]
 
     monkeypatch.setattr(daemon_module, "generate_blended_frames", fake_blend)
 
     run_loop(output_file, seed=3, sampler=sampler, should_continue=should_continue, blend_steps=2)
 
-    assert seen == [(readings[0], readings[1], 3, 2)]
+    assert seen == [(readings[0], readings[1], 3, 2, DEFAULT_PALETTE)]
     assert output_file.read_text() == "<svg>end</svg>"

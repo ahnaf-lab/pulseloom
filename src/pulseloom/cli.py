@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .config import DEFAULT_CONFIG_FILE, load_config
 from .daemon import (
     DEFAULT_BLEND_STEPS,
     DEFAULT_OUTPUT_FILE,
@@ -27,9 +28,14 @@ DEFAULT_STOP_TIMEOUT = 5.0
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG_FILE),
+        help=f"path to an INI config file for frame rate/output/palette (default: {DEFAULT_CONFIG_FILE})",
+    )
+    common.add_argument(
         "--pid-file",
-        default=str(DEFAULT_PID_FILE),
-        help=f"path to the daemon's pid file (default: {DEFAULT_PID_FILE})",
+        default=None,
+        help=f"path to the daemon's pid file (default: from config file, else {DEFAULT_PID_FILE})",
     )
 
     parser = argparse.ArgumentParser(
@@ -40,17 +46,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     start = sub.add_parser("start", parents=[common], help="start the daemon")
     start.add_argument(
-        "--interval", type=float, default=DEFAULT_INTERVAL,
-        help=f"seconds between samples (default: {DEFAULT_INTERVAL})",
-    )
-    start.add_argument("--seed", type=int, default=DEFAULT_SEED, help="generator seed")
-    start.add_argument(
-        "--output", default=str(DEFAULT_OUTPUT_FILE),
-        help=f"where to write the frame (default: {DEFAULT_OUTPUT_FILE})",
+        "--interval", type=float, default=None,
+        help=f"seconds between samples (default: from config file, else {DEFAULT_INTERVAL})",
     )
     start.add_argument(
-        "--blend-steps", type=int, default=DEFAULT_BLEND_STEPS,
-        help=f"frames eased between consecutive samples (default: {DEFAULT_BLEND_STEPS})",
+        "--seed", type=int, default=None,
+        help=f"generator seed (default: from config file, else {DEFAULT_SEED})",
+    )
+    start.add_argument(
+        "--output", default=None,
+        help=f"where to write the frame (default: from config file, else {DEFAULT_OUTPUT_FILE})",
+    )
+    start.add_argument(
+        "--blend-steps", type=int, default=None,
+        help=f"frames eased between consecutive samples (default: from config file, else {DEFAULT_BLEND_STEPS})",
     )
     start.add_argument(
         "--foreground", action="store_true",
@@ -64,7 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_start(args: argparse.Namespace, pid_file: Path) -> int:
-    output_file = Path(args.output)
+    config = load_config(args.config)
+    output_file = Path(args.output) if args.output is not None else config.output
+    interval = args.interval if args.interval is not None else config.interval
+    seed = args.seed if args.seed is not None else config.seed
+    blend_steps = args.blend_steps if args.blend_steps is not None else config.blend_steps
 
     existing_pid = read_pid_file(pid_file)
     if existing_pid is not None and is_process_alive(existing_pid):
@@ -76,7 +89,7 @@ def cmd_start(args: argparse.Namespace, pid_file: Path) -> int:
     if args.foreground:
         write_pid_file(pid_file, os.getpid())
         try:
-            run_loop(output_file, interval=args.interval, seed=args.seed, blend_steps=args.blend_steps)
+            run_loop(output_file, interval=interval, seed=seed, blend_steps=blend_steps, palette=config.palette)
         finally:
             remove_pid_file(pid_file)
         return 0
@@ -94,7 +107,7 @@ def cmd_start(args: argparse.Namespace, pid_file: Path) -> int:
     # Child: detach from the parent's session and become the daemon.
     os.setsid()
     try:
-        run_loop(output_file, interval=args.interval, seed=args.seed, blend_steps=args.blend_steps)
+        run_loop(output_file, interval=interval, seed=seed, blend_steps=blend_steps, palette=config.palette)
     finally:
         remove_pid_file(pid_file)
     os._exit(0)
@@ -139,7 +152,7 @@ def cmd_status(pid_file: Path) -> int:
 def main(argv: Optional[list] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    pid_file = Path(args.pid_file)
+    pid_file = Path(args.pid_file) if args.pid_file is not None else load_config(args.config).pid_file
 
     if args.command == "start":
         return cmd_start(args, pid_file)

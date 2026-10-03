@@ -6,14 +6,17 @@ from pathlib import Path
 
 from pulseloom import cli
 from pulseloom.daemon import read_pid_file, write_pid_file
+from pulseloom.render import DEFAULT_PALETTE
 
 
 def test_build_parser_start_defaults():
     args = cli.build_parser().parse_args(["start"])
     assert args.command == "start"
     assert args.foreground is False
-    assert args.interval > 0
-    assert args.seed == 0
+    # Unset CLI flags stay None so cmd_start knows to fall back to the config
+    # file (and from there to hardcoded defaults) instead of a baked-in value.
+    assert args.interval is None
+    assert args.seed is None
 
 
 def test_build_parser_stop_and_status_commands():
@@ -85,13 +88,15 @@ def test_cmd_stop_terminates_a_running_process(tmp_path):
 def test_cmd_start_foreground_runs_the_loop_under_a_pid_file(tmp_path, monkeypatch):
     pid_file = tmp_path / "pulseloom.pid"
     output_file = tmp_path / "frame.svg"
+    missing_config = tmp_path / "missing-config.ini"
     recorded = {}
 
-    def fake_run_loop(output, interval, seed, blend_steps):
+    def fake_run_loop(output, interval, seed, blend_steps, palette):
         recorded["output"] = Path(output)
         recorded["interval"] = interval
         recorded["seed"] = seed
         recorded["blend_steps"] = blend_steps
+        recorded["palette"] = palette
         recorded["pid_file_existed_during_run"] = pid_file.exists()
 
     monkeypatch.setattr(cli, "run_loop", fake_run_loop)
@@ -99,6 +104,7 @@ def test_cmd_start_foreground_runs_the_loop_under_a_pid_file(tmp_path, monkeypat
     args = cli.build_parser().parse_args(
         [
             "start", "--foreground",
+            "--config", str(missing_config),
             "--output", str(output_file),
             "--pid-file", str(pid_file),
             "--interval", "2",
@@ -113,6 +119,7 @@ def test_cmd_start_foreground_runs_the_loop_under_a_pid_file(tmp_path, monkeypat
     assert recorded["interval"] == 2.0
     assert recorded["seed"] == 9
     assert recorded["blend_steps"] == cli.DEFAULT_BLEND_STEPS
+    assert recorded["palette"] == DEFAULT_PALETTE
     assert recorded["pid_file_existed_during_run"] is True
     assert not pid_file.exists()  # cleaned up once the loop returns
 
@@ -137,7 +144,7 @@ def test_cmd_start_replaces_a_stale_pid_file(tmp_path, monkeypatch):
     dead_proc.wait()
     write_pid_file(pid_file, dead_pid)
 
-    monkeypatch.setattr(cli, "run_loop", lambda output, interval, seed, blend_steps: None)
+    monkeypatch.setattr(cli, "run_loop", lambda output, interval, seed, blend_steps, palette: None)
 
     args = cli.build_parser().parse_args(["start", "--foreground", "--pid-file", str(pid_file)])
     code = cli.cmd_start(args, pid_file)

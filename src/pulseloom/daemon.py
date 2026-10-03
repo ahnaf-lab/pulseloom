@@ -11,6 +11,7 @@ from typing import Callable, Optional, Union
 
 from .generator import DEFAULT_BLEND_STEPS, generate_blended_frames, generate_frame
 from .metrics import Metrics
+from .render import DEFAULT_PALETTE, Palette
 from .sampler import DEFAULT_INTERVAL, MetricsSampler
 
 DEFAULT_SEED = 0
@@ -69,6 +70,7 @@ def run_loop(
     sampler: Optional[MetricsSampler] = None,
     should_continue: Callable[[], bool] = lambda: True,
     blend_steps: int = DEFAULT_BLEND_STEPS,
+    palette: Palette = DEFAULT_PALETTE,
 ) -> None:
     """Sample, generate frames and write them to `output_file`, on repeat.
 
@@ -76,6 +78,7 @@ def run_loop(
     the previous one: `blend_steps` interpolated frames are written in quick
     succession, ending exactly on the new sample's own frame, so the texture
     flows from one state to the next instead of jump-cutting on every sample.
+    `palette` controls the colors every frame is rendered with.
 
     Runs until `sampler.stream()` is exhausted (never, for the real sampler)
     or `should_continue()` returns False, whichever comes first. Each frame is
@@ -96,9 +99,9 @@ def run_loop(
             return
 
         if previous_metrics is None:
-            frames = [generate_frame(metrics, seed=seed)]
+            frames = [generate_frame(metrics, seed=seed, palette=palette)]
         else:
-            frames = generate_blended_frames(previous_metrics, metrics, seed, blend_steps)
+            frames = generate_blended_frames(previous_metrics, metrics, seed, blend_steps, palette)
 
         for svg in frames:
             tmp_file.write_text(svg)

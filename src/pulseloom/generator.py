@@ -3,7 +3,7 @@
 from .blend import blend_steps, interpolate_grids, interpolate_metrics
 from .metrics import Metrics
 from .reaction_diffusion import run as run_simulation
-from .render import render_svg
+from .render import DEFAULT_PALETTE, Palette, render_svg
 
 GRID_SIZE = 48
 STEPS = 30
@@ -35,27 +35,31 @@ def _compute_grid(metrics: Metrics, seed: int) -> list:
     )
 
 
-def generate_frame(metrics: Metrics, seed: int) -> str:
+def generate_frame(metrics: Metrics, seed: int, palette: Palette = DEFAULT_PALETTE) -> str:
     """Deterministically turn a metrics vector and seed into one SVG frame.
 
-    Calling this twice with equal `metrics` and `seed` always produces the
-    exact same SVG string. Different metrics or a different seed produce a
-    different frame.
+    Calling this twice with equal `metrics`, `seed` and `palette` always
+    produces the exact same SVG string. Different metrics, seed or palette
+    produce a different frame.
     """
     grid = _compute_grid(metrics, seed)
-    return render_svg(grid, metrics.cpu, metrics.memory, metrics.disk)
+    return render_svg(grid, metrics.cpu, metrics.memory, metrics.disk, palette)
 
 
 def generate_blended_frames(
-    metrics_a: Metrics, metrics_b: Metrics, seed: int, steps_per_gap: int = DEFAULT_BLEND_STEPS
+    metrics_a: Metrics,
+    metrics_b: Metrics,
+    seed: int,
+    steps_per_gap: int = DEFAULT_BLEND_STEPS,
+    palette: Palette = DEFAULT_PALETTE,
 ) -> list:
     """Render `steps_per_gap` SVG frames easing from `metrics_a`'s state to `metrics_b`'s.
 
     Each sample's own reaction-diffusion grid is computed independently (the
     same way `generate_frame` does), then the two grids and their metrics are
     linearly interpolated at `steps_per_gap` evenly spaced points. The last
-    returned frame lands exactly on `generate_frame(metrics_b, seed)`, so
-    chaining these across a metrics sequence produces a smooth transition
+    returned frame lands exactly on `generate_frame(metrics_b, seed, palette)`,
+    so chaining these across a metrics sequence produces a smooth transition
     instead of a jump cut.
     """
     grid_a = _compute_grid(metrics_a, seed)
@@ -65,11 +69,16 @@ def generate_blended_frames(
     for t in blend_steps(steps_per_gap):
         grid = interpolate_grids(grid_a, grid_b, t)
         metrics = interpolate_metrics(metrics_a, metrics_b, t)
-        frames.append(render_svg(grid, metrics.cpu, metrics.memory, metrics.disk))
+        frames.append(render_svg(grid, metrics.cpu, metrics.memory, metrics.disk, palette))
     return frames
 
 
-def generate_frame_sequence(metrics_sequence: list, seed: int, steps_per_gap: int = DEFAULT_BLEND_STEPS) -> list:
+def generate_frame_sequence(
+    metrics_sequence: list,
+    seed: int,
+    steps_per_gap: int = DEFAULT_BLEND_STEPS,
+    palette: Palette = DEFAULT_PALETTE,
+) -> list:
     """Turn a fixed sequence of metrics samples into a smoothed sequence of SVG frames.
 
     The first returned frame corresponds exactly to `metrics_sequence[0]`.
@@ -81,7 +90,7 @@ def generate_frame_sequence(metrics_sequence: list, seed: int, steps_per_gap: in
     if not metrics_sequence:
         return []
 
-    frames = [generate_frame(metrics_sequence[0], seed)]
+    frames = [generate_frame(metrics_sequence[0], seed, palette)]
     for metrics_a, metrics_b in zip(metrics_sequence, metrics_sequence[1:]):
-        frames.extend(generate_blended_frames(metrics_a, metrics_b, seed, steps_per_gap))
+        frames.extend(generate_blended_frames(metrics_a, metrics_b, seed, steps_per_gap, palette))
     return frames
